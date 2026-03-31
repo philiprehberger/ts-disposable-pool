@@ -1,6 +1,6 @@
 {
   "name": "@philiprehberger/disposable-pool",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Generic async resource pool with acquire/release, validation, and auto-scaling",
   "keywords": [
     "pool",
