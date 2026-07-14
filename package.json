@@ -48,7 +48,8 @@
   },
   "devDependencies": {
     "tsdown": "^0.22.7",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "unrun": "^0.3.1"
   },
   "homepage": "https://github.com/philiprehberger/ts-disposable-pool#readme",
   "bugs": {
