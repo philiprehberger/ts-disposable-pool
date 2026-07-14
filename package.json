@@ -40,15 +40,15 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "test": "node --test",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
-    "tsup": "^8.0.0",
-    "typescript": "^6.0.2"
+    "tsdown": "^0.22.7",
+    "typescript": "^7.0.2"
   },
   "homepage": "https://github.com/philiprehberger/ts-disposable-pool#readme",
   "bugs": {
