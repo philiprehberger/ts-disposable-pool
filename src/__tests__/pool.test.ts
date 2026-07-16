@@ -101,6 +101,44 @@ describe('createPool', () => {
     assert.equal(pool.size, 0);
   });
 
+  it('min pre-warms resources on creation', async () => {
+    const { options } = makeOptions({ min: 3 });
+    const pool = createPool(options);
+    // Pre-warming is async; wait a tick for the idle resources to settle.
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(pool.size, 3);
+    assert.equal(pool.available, 3);
+    await pool.drain();
+    assert.equal(pool.size, 0);
+  });
+
+  it('idleTimeout does not reap below min', async () => {
+    const { options, destroyed } = makeOptions({ min: 2, idleTimeout: 20 });
+    const pool = createPool(options);
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(pool.size, 2);
+    // Wait well past idleTimeout — the two min resources must survive.
+    await new Promise((r) => setTimeout(r, 60));
+    assert.equal(pool.size, 2);
+    assert.equal(destroyed.length, 0);
+    await pool.drain();
+  });
+
+  it('clear destroys idle resources and re-warms to min', async () => {
+    const { options, destroyed } = makeOptions({ min: 2 });
+    const pool = createPool(options);
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(pool.available, 2);
+
+    await pool.clear();
+    // The two original idle resources were destroyed...
+    assert.equal(destroyed.length, 2);
+    // ...and the pool re-warmed back up to min.
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(pool.available, 2);
+    await pool.drain();
+  });
+
   it('validate rejects bad resources', async () => {
     let callCount = 0;
     const { options } = makeOptions({

@@ -4,6 +4,8 @@
 [![npm version](https://img.shields.io/npm/v/@philiprehberger/disposable-pool.svg)](https://www.npmjs.com/package/@philiprehberger/disposable-pool)
 [![Last updated](https://img.shields.io/github/last-commit/philiprehberger/ts-disposable-pool)](https://github.com/philiprehberger/ts-disposable-pool/commits/main)
 
+![@philiprehberger/disposable-pool](https://raw.githubusercontent.com/philiprehberger/ts-disposable-pool/main/package-card.webp)
+
 Generic async resource pool with acquire/release, validation, and auto-scaling.
 
 ## Installation
@@ -21,7 +23,9 @@ const pool = createPool({
   create: async () => await connectToDatabase(),
   destroy: async (conn) => await conn.close(),
   validate: async (conn) => conn.isAlive(),
+  min: 2,
   max: 10,
+  idleTimeout: 30000,
   acquireTimeout: 5000,
 });
 
@@ -38,6 +42,9 @@ try {
   pool.release(conn);
 }
 
+// Flush stale idle resources without touching active ones
+await pool.clear();
+
 // Graceful shutdown
 await pool.drain();
 ```
@@ -53,8 +60,9 @@ Creates a new resource pool.
 - **`create`** — Factory function returning a new resource
 - **`destroy`** — Cleanup function for a resource
 - **`validate?`** — Check if a resource is still valid before reuse
+- **`min?`** — Minimum resources to pre-warm and keep alive (default: `0`)
 - **`max?`** — Maximum pool size (default: `Infinity`)
-- **`idleTimeout?`** — Destroy idle resources after this many ms
+- **`idleTimeout?`** — Destroy idle resources after this many ms (never below `min`)
 - **`acquireTimeout?`** — Reject acquire if waiting longer than this many ms
 
 #### `Pool<T>`
@@ -62,6 +70,7 @@ Creates a new resource pool.
 - **`acquire()`** — Get a resource from the pool
 - **`release(resource)`** — Return a resource to the pool
 - **`withResource(fn)`** — Acquire, run fn, auto-release
+- **`clear()`** — Destroy all idle resources and re-warm up to `min`
 - **`drain()`** — Destroy all resources and reject pending waiters
 - **`size`** — Total resources (idle + active)
 - **`available`** — Number of idle resources

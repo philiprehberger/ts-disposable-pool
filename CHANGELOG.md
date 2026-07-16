@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0
+
+- Implement the `min` option to pre-warm and maintain a minimum number of resources
+- `idleTimeout` no longer reaps resources below `min`
+- Add `clear()` to destroy idle resources and re-warm up to `min`
+- Add README card image and document `min` and `clear()`
+
 ## 0.1.2
 
 - Standardize README to 3-badge format with emoji Support section

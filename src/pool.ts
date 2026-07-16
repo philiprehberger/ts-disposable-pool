@@ -5,6 +5,7 @@ export function createPool<T>(options: PoolOptions<T>): Pool<T> {
     create,
     destroy,
     validate,
+    min = 0,
     max = Infinity,
     idleTimeout,
     acquireTimeout,
@@ -18,8 +19,13 @@ export function createPool<T>(options: PoolOptions<T>): Pool<T> {
     reject: (error: Error) => void;
     timer?: ReturnType<typeof setTimeout>;
   }[] = [];
+  let pendingCreations = 0;
   let draining = false;
   let drainResolve: (() => void) | null = null;
+
+  function totalCount(): number {
+    return idle.length + active.size + pendingCreations;
+  }
 
   function clearIdleTimer(resource: T): void {
     const timer = idleTimers.get(resource);
@@ -33,21 +39,71 @@ export function createPool<T>(options: PoolOptions<T>): Pool<T> {
     if (idleTimeout != null && idleTimeout > 0) {
       const timer = setTimeout(async () => {
         const index = idle.indexOf(resource);
-        if (index !== -1) {
-          idle.splice(index, 1);
-          idleTimers.delete(resource);
-          await destroy(resource);
-          checkDrainComplete();
+        if (index === -1) {
+          return;
         }
+        // Keep at least `min` resources alive — re-arm and check again later.
+        if (idle.length + active.size <= min) {
+          idleTimers.delete(resource);
+          setIdleTimer(resource);
+          return;
+        }
+        idle.splice(index, 1);
+        idleTimers.delete(resource);
+        await destroy(resource);
+        checkDrainComplete();
       }, idleTimeout);
       idleTimers.set(resource, timer);
     }
   }
 
   function checkDrainComplete(): void {
-    if (draining && idle.length === 0 && active.size === 0 && drainResolve) {
+    if (
+      draining &&
+      idle.length === 0 &&
+      active.size === 0 &&
+      pendingCreations === 0 &&
+      drainResolve
+    ) {
       drainResolve();
       drainResolve = null;
+    }
+  }
+
+  // Hand a freshly created resource to a waiter if one is queued, otherwise
+  // park it in the idle set.
+  function dispatch(resource: T): void {
+    if (waitQueue.length > 0) {
+      const waiter = waitQueue.shift()!;
+      if (waiter.timer) clearTimeout(waiter.timer);
+      active.add(resource);
+      waiter.resolve(resource);
+      return;
+    }
+    idle.push(resource);
+    setIdleTimer(resource);
+  }
+
+  // Pre-warm the pool up to `min` resources without blocking. Guards against
+  // over-creation by counting in-flight creations in `totalCount()`.
+  function ensureMinimum(): void {
+    if (draining) return;
+    while (min > 0 && totalCount() < min) {
+      pendingCreations++;
+      create().then(
+        (resource) => {
+          pendingCreations--;
+          if (draining) {
+            destroy(resource).then(() => checkDrainComplete());
+            return;
+          }
+          dispatch(resource);
+        },
+        () => {
+          // Creation failed — stop pre-warming to avoid a tight retry loop.
+          pendingCreations--;
+        },
+      );
     }
   }
 
@@ -134,6 +190,17 @@ export function createPool<T>(options: PoolOptions<T>): Pool<T> {
       }
     },
 
+    async clear(): Promise<void> {
+      const toDestroy = idle.splice(0, idle.length);
+      for (const resource of toDestroy) {
+        clearIdleTimer(resource);
+        await destroy(resource);
+      }
+      if (!draining) {
+        ensureMinimum();
+      }
+    },
+
     async drain(): Promise<void> {
       draining = true;
 
@@ -149,7 +216,7 @@ export function createPool<T>(options: PoolOptions<T>): Pool<T> {
         await destroy(resource);
       }
 
-      if (active.size === 0) {
+      if (active.size === 0 && pendingCreations === 0) {
         return;
       }
 
@@ -170,6 +237,8 @@ export function createPool<T>(options: PoolOptions<T>): Pool<T> {
       return waitQueue.length;
     },
   };
+
+  ensureMinimum();
 
   return pool;
 }
